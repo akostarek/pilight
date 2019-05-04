@@ -125,8 +125,12 @@ unsigned int explode(const char *str, const char *delimiter, char ***output) {
 	while(i < l) {
 		if(strncmp(&str[i], delimiter, p) == 0) {
 			if((i-y) > 0) {
-				*output = REALLOC(*output, sizeof(char *)*(n+1));
-				(*output)[n] = MALLOC((i-y)+1);
+				if((*output = REALLOC(*output, sizeof(char *)*(n+1))) == NULL) {
+					OUT_OF_MEMORY
+				}
+				if(((*output)[n] = MALLOC((i-y)+1)) == NULL) {
+					OUT_OF_MEMORY
+				}
 				strncpy((*output)[n], &str[y], i-y);
 				(*output)[n][(i-y)] = '\0';
 				n++;
@@ -136,8 +140,12 @@ unsigned int explode(const char *str, const char *delimiter, char ***output) {
 		i++;
 	}
 	if(strlen(&str[y]) > 0) {
-		*output = REALLOC(*output, sizeof(char *)*(n+1));
-		(*output)[n] = MALLOC((i-y)+1);
+		if((*output = REALLOC(*output, sizeof(char *)*(n+1))) == NULL) {
+			OUT_OF_MEMORY
+		}
+		if(((*output)[n] = MALLOC((i-y)+1)) == NULL) {
+			OUT_OF_MEMORY
+		}
 		strncpy((*output)[n], &str[y], i-y);
 		(*output)[n][(i-y)] = '\0';
 		n++;
@@ -190,12 +198,12 @@ int unsetenv(const char *name) {
 	return putenv(c);
 }
 
-int isrunning(const char *program) {
+int isrunning(const char *program, int **ret) {
 	DWORD aiPID[1000], iCb = 1000;
 	DWORD iCbneeded = 0;
 	int iNumProc = 0, i = 0;
 	char szName[MAX_PATH];
-	int iLenP = 0;
+	int iLenP = 0, nr = 0;
 	HANDLE hProc;
 	HMODULE hMod;
 
@@ -221,42 +229,44 @@ int isrunning(const char *program) {
 		CloseHandle(hProc);
 
 		if(strstr(szName, program) != NULL) {
-			return aiPID[i];
+			if(((*ret) = REALLOC((*ret), (nr+1)*sizeof(int *))) == NULL) {
+				OUT_OF_MEMORY
+			}
+			(*ret)[nr] = (int)aiPID[i];
+			nr++;
 		}
 	}
 
-	return -1;
+	return nr;
 }
 #else
-int isrunning(const char *program) {
-	int pid = -1;
+int isrunning(const char *program, int **ret) {
+	int n = 0;
 	char *tmp = MALLOC(strlen(program)+1);
 	if(tmp == NULL) {
-		fprintf(stderr, "out of memory\n");
-		exit(EXIT_FAILURE);
+		OUT_OF_MEMORY
 	}
 	strcpy(tmp, program);
-	if((pid = findproc(tmp, NULL, 1)) > 0) {
+	if((n = findproc(tmp, NULL, 1, ret)) > 0) {
 		FREE(tmp);
-		return pid;
+		return n;
 	}
 	FREE(tmp);
-	return -1;
+	return n;
 }
 #endif
 
 #ifdef __FreeBSD__
-int findproc(char *cmd, char *args, int loosely) {
+int findproc(char *cmd, char *args, int loosely, int **ret) {
 #else
-pid_t findproc(char *cmd, char *args, int loosely) {
+pid_t findproc(char *cmd, char *args, int loosely, int **ret) {
 #endif
-	logprintf(LOG_STACK, "%s(...)", __FUNCTION__);
 
 #ifndef _WIN32
 	DIR* dir;
 	struct dirent* ent;
 	char fname[512], cmdline[1024];
-	int fd = 0, ptr = 0, match = 0, i = 0, y = '\n', x = 0;
+	int fd = 0, ptr = 0, match = 0, i = 0, y = '\n', x = 0, nr = 0;
 
 	if(procmounted == 0) {
 		if((dir = opendir("/proc"))) {
@@ -336,27 +346,19 @@ pid_t findproc(char *cmd, char *args, int loosely) {
 
 							if(match == 2) {
 								pid_t pid = (pid_t)atol(ent->d_name);
-								close(fd);
-								closedir(dir);
-								for(x=0;x<n;x++) {
-									FREE(array[x]);
+								if(((*ret) = REALLOC((*ret), (nr+1)*sizeof(int *))) == NULL) {
+									OUT_OF_MEMORY
 								}
-								if(n > 0) {
-									FREE(array);
-								}
-								return pid;
+								(*ret)[nr] = (int)pid;
+								nr++;
 							}
 						} else if(match > 0) {
 							pid_t pid = (pid_t)atol(ent->d_name);
-							close(fd);
-							closedir(dir);
-							for(x=0;x<n;x++) {
-								FREE(array[x]);
+							if(((*ret) = REALLOC((*ret), (nr+1)*sizeof(int *))) == NULL) {
+								OUT_OF_MEMORY
 							}
-							if(n > 0) {
-								FREE(array);
-							}
-							return pid;
+							(*ret)[nr] = (int)pid;
+							nr++;
 						}
 						for(x=0;x<n;x++) {
 							FREE(array[x]);
@@ -372,7 +374,7 @@ pid_t findproc(char *cmd, char *args, int loosely) {
 		closedir(dir);
 	}
 #endif
-	return -1;
+	return nr;
 }
 
 int isNumeric(char *s) {
@@ -953,18 +955,14 @@ char *uniq_space(char *str){
 }
 
 int str_replace(char *search, char *replace, char **str) {
-	logprintf(LOG_STACK, "%s(...)", __FUNCTION__);
-
-	char *target = *str;
 	unsigned short match = 0;
-	int len = (int)strlen(target);
+	int len = (int)strlen(*str);
 	int nlen = 0;
 	int slen = (int)strlen(search);
 	int rlen = (int)strlen(replace);
 	int x = 0;
-
 	while(x < len) {
-		if(strncmp(&target[x], search, (size_t)slen) == 0) {
+		if(strncmp(&(*str)[x], search, (size_t)slen) == 0) {
 			match = 1;
 			int rpos = (x + (slen - rlen));
 			if(rpos < 0) {
@@ -973,17 +971,15 @@ int str_replace(char *search, char *replace, char **str) {
 			}
 			nlen = len - (slen - rlen);
 			if(len < nlen) {
-				if((target = REALLOC(target, (size_t)nlen+1)) == NULL) {
-					fprintf(stderr, "out of memory\n");
-					exit(EXIT_FAILURE);
+				if(((*str) = REALLOC((*str), (size_t)nlen+1)) == NULL) { /*LCOV_EXCL_LINE*/
+					OUT_OF_MEMORY /*LCOV_EXCL_LINE*/
 				}
-				memset(&target[len], '\0', (size_t)(nlen-len));
+				memset(&(*str)[len], '\0', (size_t)(nlen-len));
 			}
 			len = nlen;
-
-			memmove(&target[x], &target[rpos], (size_t)(len-x));
-			strncpy(&target[x], replace, (size_t)rlen);
-			target[len] = '\0';
+			memmove(&(*str)[x], &(*str)[rpos], (size_t)(len-x));
+			strncpy(&(*str)[x], replace, (size_t)rlen);
+			(*str)[len] = '\0';
 			x += rlen-1;
 		}
 		x++;
@@ -995,8 +991,36 @@ int str_replace(char *search, char *replace, char **str) {
 	}
 }
 
+void strtolower(char **a) {
+	int i = 0;
+	for(i = 0; (*a)[i]; i++){
+		(*a)[i] = tolower((*a)[i]);
+	}
+}
+
+int strnicmp(char const *a, char const *b, size_t len) {
+	int i = 0;
+
+	if(a == NULL || b == NULL) {
+		return -1;
+	}
+	if(len == 0) {
+		return 0;
+	}
+
+	for(;i++<len; a++, b++) {
+		int d = tolower(*a) - tolower(*b);
+		if(d != 0 || !*a || i == len) {
+			return d;
+		}
+	}
+	return -1;
+}
+
 int stricmp(char const *a, char const *b) {
-	logprintf(LOG_STACK, "%s(...)", __FUNCTION__);
+	if(a == NULL || b == NULL) {
+		return -1;
+	}
 
 	for(;; a++, b++) {
 			int d = tolower(*a) - tolower(*b);
