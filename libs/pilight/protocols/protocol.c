@@ -22,7 +22,6 @@
 #include <dirent.h>
 #include <sys/time.h>
 #include <sys/stat.h>
-#include <sys/stat.h>
 #ifndef _WIN32
 	#ifdef __mips__
 		#define __USE_UNIX98
@@ -124,7 +123,7 @@ void protocol_init(void) {
 
 	memset(pilight_commit, '\0', 3);
 
-	if(settings_find_string("protocol-root", &protocol_root) != 0) {
+	if(config_setting_get_string("protocol-root", 0, &protocol_root) != 0) {
 		/* If no protocol root was set, use the default protocol root */
 		if((protocol_root = MALLOC(strlen(PROTOCOL_ROOT)+1)) == NULL) {
 			fprintf(stderr, "out of memory\n");
@@ -196,7 +195,7 @@ void protocol_init(void) {
 		}
 		closedir(d);
 	}
-	if(protocol_root_free) {
+	if(protocol_root_free == 1) {
 		FREE(protocol_root);
 	}
 #endif
@@ -224,6 +223,7 @@ void protocol_register(protocol_t **proto) {
 	(*proto)->config = 1;
 	(*proto)->masterOnly = 0;
 	(*proto)->parseCode = NULL;
+	(*proto)->parseCommand = NULL;
 	(*proto)->createCode = NULL;
 	(*proto)->checkValues = NULL;
 	(*proto)->initDev = NULL;
