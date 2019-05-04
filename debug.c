@@ -27,36 +27,30 @@
 #include <math.h>
 #include <string.h>
 
-#ifndef _WIN32
-#include <wiringx.h>
-#endif
-
 #include "libs/pilight/core/threads.h"
 #include "libs/pilight/core/pilight.h"
 #include "libs/pilight/core/network.h"
+#include "libs/pilight/core/config.h"
 #include "libs/pilight/core/log.h"
 #include "libs/pilight/core/options.h"
 #include "libs/pilight/core/threads.h"
 #include "libs/pilight/core/datetime.h"
 #include "libs/pilight/core/ssdp.h"
 #include "libs/pilight/core/socket.h"
+#include "libs/pilight/core/irq.h"
 #include "libs/pilight/core/gc.h"
 #include "libs/pilight/core/dso.h"
-#include "libs/pilight/config/config.h"
-#include "libs/pilight/config/hardware.h"
-#include "libs/pilight/lua_c/lua.h"
 
 #include "libs/pilight/events/events.h"
 
-static unsigned short main_loop = 1;
-static unsigned short inner_loop = 1;
+#include "libs/pilight/config/hardware.h"
 
-#ifndef PILIGHT_DEVELOPMENT
-static uv_signal_t *signal_req = NULL;
-static int doSkip = 0;
+#ifndef _WIN32
+	#include "libs/wiringx/wiringX.h"
 #endif
 
-static char *lua_root = LUA_ROOT;
+static unsigned short main_loop = 1;
+static unsigned short inner_loop = 1;
 
 static int normalize(int i, int pulselen) {
 	double x;
@@ -78,9 +72,6 @@ int main_gc(void) {
 	options_gc();
 	socket_gc();
 
-#ifndef PILIGHT_DEVELOPMENT
-	eventpool_gc();
-#endif
 	config_gc();
 	protocol_gc();
 	whitelist_free();
@@ -99,98 +90,74 @@ int main_gc(void) {
 	return EXIT_SUCCESS;
 }
 
-static void *receivePulseTrain(int reason, void *param) {
-	doSkip ^= 1;
-	if(doSkip == 1) {
-		return NULL;
-	}
-
-	struct reason_received_pulsetrain_t *data = param;
+void *receivePulseTrain(void *param) {
+	int i = 0;
 
 	int pulselen = 0;
 	int pulse = 0;
 
+	struct rawcode_t r;
 	struct tm tm;
 	time_t now = 0;
 
-#ifdef PILIGHT_DEVELOPMENT
-	struct hardware_t *hw = NULL;
-#endif
-	int i = 0;
+	struct hardware_t *hw = (hardware_t *)param;
 
-	if(data->hardware != NULL && data->pulses != NULL && data->length > 0) {
-#ifndef PILIGHT_REWRITE
-		char *id = NULL;
-		struct conf_hardware_t *tmp_confhw = conf_hardware;
-		while(tmp_confhw) {
-			if(strcmp(tmp_confhw->hardware->id, data->hardware) == 0) {
-				id = tmp_confhw->hardware->id;
-			}
-			tmp_confhw = tmp_confhw->next;
-		}
-#else
-		if(hardware_select_struct(ORIGIN_MASTER, data->hardware, &hw) == 0) {
-#endif
-			memset(&tm, '\0', sizeof(struct tm));
-			pulse = 0;
-			inner_loop = 1;
+	while(main_loop) {
+		memset(&r.pulses, 0, MAXPULSESTREAMLENGTH);
+		memset(&tm, '\0', sizeof(struct tm));
+		pulse = 0;
+		inner_loop = 1;
 
-			i = 0;
-			time(&now);
+		i = 0;
+		time(&now);
 
-			if(data->length > 0) {
-				pulselen = data->pulses[data->length-1]/PULSE_DIV;
-				if(pulselen > 25) {
-					for(i=3;i<data->length;i++) {
-						if((data->pulses[i]/pulselen) >= 2) {
-							pulse=data->pulses[i];
-							break;
-						}
-					}
+		hw->receivePulseTrain(&r);
+		if(r.length == -1) {
+			main_gc();
+			break;
+		} else if(r.length > 0) {
+			pulselen = r.pulses[r.length-1]/PULSE_DIV;
 
-					if(normalize(pulse, pulselen) > 0 && data->length > 25) {
-						/* Print everything */
-						printf("--[RESULTS]--\n");
-						printf("\n");
-#ifdef _WIN32
-						memcpy(&tm, localtime(&now), sizeof(struct tm));
-#else
-						localtime_r(&now, &tm);
-#endif
-
-#ifdef _WIN32
-						printf("time:\t\t%s", asctime(&tm));
-#else
-						char buf[128];
-						char *p = buf;
-						memset(&buf, '\0', sizeof(buf));
-	#ifdef __sun
-						asctime_r(&tm, p, sizeof(buf));
-	#else
-						asctime_r(&tm, p);
-	#endif
-						printf("time:\t\t%s", buf);
-#endif
-#ifdef PILIGHT_DEVELOPMENT
-						printf("hardware:\t%s\n", hw->id);
-#else
-						printf("hardware:\t%s\n", id);
-#endif
-						printf("pulse:\t\t%d\n", normalize(pulse, pulselen));
-						printf("rawlen:\t\t%d\n", data->length);
-						printf("pulselen:\t%d\n", pulselen);
-						printf("\n");
-						printf("Raw code:\n");
-						for(i=0;i<data->length;i++) {
-							printf("%d ", data->pulses[i]);
-						}
-						printf("\n");
+			if(pulselen > 25) {
+				for(i=3;i<r.length;i++) {
+					if((r.pulses[i]/pulselen) >= 2) {
+						pulse=r.pulses[i];
+						break;
 					}
 				}
-			}
-#ifdef PILIGHT_DEVELOPMENT
-		}
+
+				if(normalize(pulse, pulselen) > 0 && r.length > 25) {
+					/* Print everything */
+					printf("--[RESULTS]--\n");
+					printf("\n");
+#ifdef _WIN32
+					localtime(&now);
+#else
+					localtime_r(&now, &tm);
 #endif
+
+#ifdef _WIN32
+					printf("time:\t\t%s\n", asctime(&tm));
+#else
+					char buf[128];
+					char *p = buf;
+					memset(&buf, '\0', sizeof(buf));
+					asctime_r(&tm, p);
+					printf("time:\t\t%s", buf);
+#endif
+					printf("hardware:\t%s\n", hw->id);
+					printf("pulse:\t\t%d\n", normalize(pulse, pulselen));
+					printf("rawlen:\t\t%d\n", r.length);
+					printf("pulselen:\t%d\n", pulselen);
+					printf("\n");
+					printf("Raw code:\n");
+					for(i=0;i<r.length;i++) {
+						printf("%d ", r.pulses[i]);
+					}
+					printf("\n");
+				}
+			}
+		}
 	}
 	return (void *)NULL;
 }
@@ -208,7 +175,6 @@ void *receiveOOK(void *param) {
 	int footer = 0;
 	int pulse = 0;
 	int rawLength = 0;
-	int plsdec = 1;
 
 	struct tm tm;
 	time_t now = 0, later = 0;
@@ -216,8 +182,8 @@ void *receiveOOK(void *param) {
 	struct hardware_t *hw = (hardware_t *)param;
 
 	while(main_loop) {
-		memset(&raw, '\0', sizeof(raw));
-		memset(&pRaw, '\0', sizeof(pRaw));
+		memset(&raw, '\0', MAXPULSESTREAMLENGTH);
+		memset(&pRaw, '\0', MAXPULSESTREAMLENGTH);
 		memset(&tm, '\0', sizeof(struct tm));
 		recording = 1;
 		bit = 0;
@@ -253,7 +219,6 @@ void *receiveOOK(void *param) {
 			if((duration > 5100 && footer == 0) || ((footer-(footer*0.3)<duration) && (footer+(footer*0.3)>duration))) {
 				recording = 1;
 				pulselen = (int)duration/PULSE_DIV;
-
 				/* Check if we are recording similar codes */
 				for(i=0;i<(bit-1);i++) {
 					if(!(((pRaw[i]-(pRaw[i]*0.3)) < raw[i]) && ((pRaw[i]+(pRaw[i]*0.3)) > raw[i]))) {
@@ -271,14 +236,10 @@ void *receiveOOK(void *param) {
 						if(rawLength == 0)
 							rawLength=bit;
 					}
-
-					if(pulselen > 1000) {
-						plsdec = 10;
-					}
 					/* Try to catch the footer, and the low and high values */
 					for(i=0;i<bit;i++) {
 						if((i+1)<bit && i > 2 && footer > 0) {
-							if((raw[i]/(pulselen/plsdec)) >= 2) {
+							if((raw[i]/pulselen) >= 2) {
 								pulse=raw[i];
 							}
 						}
@@ -298,7 +259,7 @@ void *receiveOOK(void *param) {
 			fflush(stdout);
 		}
 
-		if(normalize(pulse, (pulselen/plsdec)) > 0 && rawLength > 25) {
+		if(normalize(pulse, pulselen) > 0 && rawLength > 25) {
 			/* Print everything */
 			printf("--[RESULTS]--\n");
 			printf("\n");
@@ -318,13 +279,13 @@ void *receiveOOK(void *param) {
 			printf("time:\t\t%s", buf);
 #endif
 			printf("hardware:\t%s\n", hw->id);
-			printf("pulse:\t\t%d\n", normalize(pulse, (pulselen/plsdec)));
+			printf("pulse:\t\t%d\n", normalize(pulse, pulselen));
 			printf("rawlen:\t\t%d\n", rawLength);
 			printf("pulselen:\t%d\n", pulselen);
 			printf("\n");
 			printf("Raw code:\n");
 			for(i=0;i<rawLength;i++) {
-				printf("%d ",normalize(raw[i], (pulselen/plsdec))*(pulselen/plsdec));
+				printf("%d ",normalize(raw[i], pulselen)*pulselen);
 			}
 			printf("\n");
 		}
@@ -335,45 +296,8 @@ void *receiveOOK(void *param) {
 	return NULL;
 }
 
-#ifndef PILIGHT_DEVELOPMENT
-static void signal_cb(uv_signal_t *handle, int signum) {
-	uv_stop(uv_default_loop());
-	main_gc();
-}
-
-static void close_cb(uv_handle_t *handle) {
-	FREE(handle);
-}
-
-static void walk_cb(uv_handle_t *handle, void *arg) {
-	if(!uv_is_closing(handle)) {
-		uv_close(handle, close_cb);
-	}
-}
-
-static void main_loop1(int onclose) {
-	if(onclose == 1) {
-		signal_cb(NULL, SIGINT);
-	}
-	uv_run(uv_default_loop(), UV_RUN_DEFAULT);
-	uv_walk(uv_default_loop(), walk_cb, NULL);
-	uv_run(uv_default_loop(), UV_RUN_ONCE);
-
-	if(onclose == 1) {
-		while(uv_loop_close(uv_default_loop()) == UV_EBUSY) {
-			usleep(10);
-		}
-	}
-}
-#endif
-
 int main(int argc, char **argv) {
-#ifndef PILIGHT_DEVELOPMENT
-	const uv_thread_t pth_cur_id = uv_thread_self();
-	memcpy((void *)&pth_main_id, &pth_cur_id, sizeof(uv_thread_t));
-#endif
-
-	memtrack();
+	// memtrack();
 
 	atomicinit();
 
@@ -388,15 +312,6 @@ int main(int argc, char **argv) {
 	}
 	strcpy(progname, "pilight-debug");
 
-#ifndef PILIGHT_DEVELOPMENT
-	if((signal_req = MALLOC(sizeof(uv_signal_t))) == NULL) {
-		OUT_OF_MEMORY /*LCOV_EXCL_LINE*/
-	}
-
-	uv_signal_init(uv_default_loop(), signal_req);
-	uv_signal_start(signal_req, signal_cb, SIGINT);
-#endif
-
 #ifndef _WIN32
 	if(geteuid() != 0) {
 		printf("%s requires root privileges in order to run\n", progname);
@@ -409,173 +324,110 @@ int main(int argc, char **argv) {
 	log_file_disable();
 	log_level_set(LOG_NOTICE);
 
+#ifndef _WIN32
+	wiringXLog = logprintf;
+#endif
+
 	struct options_t *options = NULL;
 
-	char *configtmp = CONFIG_FILE;
-	int help = 0;
+	char *args = NULL;
+	pid_t pid = 0;
 
-	options_add(&options, "H", "help", OPTION_NO_VALUE, 0, JSON_NULL, NULL, NULL);
-	options_add(&options, "V", "version", OPTION_NO_VALUE, 0, JSON_NULL, NULL, NULL);
-	options_add(&options, "C", "config", OPTION_HAS_VALUE, 0, JSON_NULL, NULL, NULL);
-	options_add(&options, "Ls", "storage-root", OPTION_HAS_VALUE, 0, JSON_NULL, NULL, NULL);
-	options_add(&options, "Ll", "lua-root", OPTION_HAS_VALUE, 0, JSON_NULL, NULL, NULL);
+	char configtmp[] = CONFIG_FILE;
+	config_set_file(configtmp);
 
-	// if(argc == 1) {
-		// printf("Usage: %s [options]\n", progname);
-		// goto clear;
-	// }
+	options_add(&options, 'H', "help", OPTION_NO_VALUE, 0, JSON_NULL, NULL, NULL);
+	options_add(&options, 'V', "version", OPTION_NO_VALUE, 0, JSON_NULL, NULL, NULL);
+	options_add(&options, 'C', "config", OPTION_HAS_VALUE, 0, JSON_NULL, NULL, NULL);
 
-	if(options_parse(options, argc, argv) == -1) {
-		help = 1;
-	}
-
-	if(options_exists(options, "H") == 0 || help == 1) {
-		printf("Usage: %s [options]\n", progname);
-		printf("\t -H  --help\t\t\tdisplay usage summary\n");
-		printf("\t -V  --version\t\t\tdisplay version\n");
-		printf("\t -C  --config\t\t\tconfig file\n");
-		printf("\t -Ls --storage-root=xxxx\tlocation of the storage lua modules\n");
-		printf("\t -Ll --lua-root=xxxx\t\tlocation of the plain lua modules\n");
-		goto clear;
-	}
-
-	if(options_exists(options, "V") == 0) {
-		printf("%s v%s\n", progname, PILIGHT_VERSION);
-		goto clear;
-	}
-
-	if(options_exists(options, "C") == 0) {
-		options_get_string(options, "C", &configtmp);
-	}
-
-	if(options_exists(options, "Ls") == 0) {
-		char *arg = NULL;
-		options_get_string(options, "Ls", &arg);
-		if(config_root(arg) == -1) {
-			logprintf(LOG_ERR, "%s is not valid storage lua modules path", arg);
-			goto clear;
+	while (1) {
+		int c;
+		c = options_parse(&options, argc, argv, 1, &args);
+		if(c == -1)
+			break;
+		if(c == -2)
+			c = 'H';
+		switch (c) {
+			case 'H':
+				printf("Usage: %s [options]\n", progname);
+				printf("\t -H --help\t\tdisplay usage summary\n");
+				printf("\t -V --version\t\tdisplay version\n");
+				printf("\t -C --config\t\tconfig file\n");
+				goto clear;
+			break;
+			case 'V':
+				printf("%s v%s\n", progname, PILIGHT_VERSION);
+				goto clear;
+			break;
+			case 'C':
+				if(config_set_file(args) == EXIT_FAILURE) {
+					goto clear;
+				}
+			break;
+			default:
+				printf("Usage: %s [options]\n", progname);
+				goto clear;
+			break;
 		}
 	}
+	options_delete(options);
 
-	if(options_exists(options, "Ll") == 0) {
-		options_get_string(options, "Ll", &lua_root);
-	}
-
-	{
-		int len = strlen(lua_root)+strlen("lua/?/?.lua")+1;
-		char *lua_path = MALLOC(len);
-
-		if(lua_path == NULL) {
-			OUT_OF_MEMORY
-		}
-
-		plua_init();
-
-		memset(lua_path, '\0', len);
-		snprintf(lua_path, len, "%s/?/?.lua", lua_root);
-		plua_package_path(lua_path);
-
-		memset(lua_path, '\0', len);
-		snprintf(lua_path, len, "%s/?.lua", lua_root);
-		plua_package_path(lua_path);
-
-		FREE(lua_path);
-	}
-
-	int *ret = NULL, n = 0;
-	if((n = isrunning("pilight-debug", &ret)) > 1) {
-		int i = 0;
-		for(i=0;i<n;i++) {
-			if(ret[i] != getpid()) {
-				logprintf(LOG_NOTICE, "pilight-debug is already running (%d)", ret[i]);
-				break;
-			}
-		}
-		FREE(ret);
+#ifdef _WIN32
+	if((pid = check_instances(L"pilight-debug")) != -1) {
+		logprintf(LOG_NOTICE, "pilight-debug is already running");
 		goto clear;
 	}
-
-	if((n = isrunning("pilight-daemon", &ret)) > 0) {
-		logprintf(LOG_NOTICE, "pilight-daemon instance found (%d)", ret[0]);
-		FREE(ret);
-		goto clear;
-	}
-
-	if((n = isrunning("pilight-raw", &ret)) > 0) {
-		logprintf(LOG_NOTICE, "pilight-raw instance found (%d)", ret[0]);
-		FREE(ret);
-		goto clear;
-	}
-
-	if(config_set_file(configtmp) == EXIT_FAILURE) {
-		goto clear;
-	}
-
-#ifndef PILIGHT_DEVELOPMENT
-	eventpool_init(EVENTPOOL_THREADED);
 #endif
+
+	if((pid = isrunning("pilight-daemon")) != -1) {
+		logprintf(LOG_NOTICE, "pilight-daemon instance found (%d)", (int)pid);
+		goto clear;
+	}
+
+	if((pid = isrunning("pilight-raw")) != -1) {
+		logprintf(LOG_NOTICE, "pilight-raw instance found (%d)", (int)pid);
+		goto clear;
+	}
+
 	protocol_init();
 	config_init();
-	if(config_read(CONFIG_SETTINGS | CONFIG_HARDWARE) != EXIT_SUCCESS) {
+
+	if(config_read() != EXIT_SUCCESS) {
 		goto clear;
 	}
-
-#ifndef PILIGHT_DEVELOPMENT
-	eventpool_callback(REASON_RECEIVED_PULSETRAIN, receivePulseTrain);
-#endif
 
 	/* Start threads library that keeps track of all threads used */
 	threads_start();
 
-	int has_hardware = 0;
 	struct conf_hardware_t *tmp_confhw = conf_hardware;
 	while(tmp_confhw) {
 		if(tmp_confhw->hardware->init) {
-			if(tmp_confhw->hardware->comtype == COMOOK) {
-				tmp_confhw->hardware->maxrawlen = MAXPULSESTREAMLENGTH;
-				tmp_confhw->hardware->minrawlen = 25;
-				tmp_confhw->hardware->maxgaplen = 34000;
-				tmp_confhw->hardware->mingaplen = 5100;
-			}
 			if(tmp_confhw->hardware->init() == EXIT_FAILURE) {
 				logprintf(LOG_ERR, "could not initialize %s hardware mode", tmp_confhw->hardware->id);
 				goto clear;
-			} else {
-				has_hardware = 1;
+			}
+			if(tmp_confhw->hardware->comtype == COMOOK) {
+				threads_register(tmp_confhw->hardware->id, &receiveOOK, (void *)tmp_confhw->hardware, 0);
+			} else if(tmp_confhw->hardware->comtype == COMPLSTRAIN) {
+				threads_register(tmp_confhw->hardware->id, &receivePulseTrain, (void *)tmp_confhw->hardware, 0);
 			}
 		}
 		tmp_confhw = tmp_confhw->next;
 	}
 
-	if(has_hardware == 0) {
-		logprintf(LOG_NOTICE, "there are no hardware modules configured");
-		uv_stop(uv_default_loop());
-		goto clear;
-	}
-
 	printf("Press and hold one of the buttons on your remote or wait until\n");
-	printf("another device such as a weather station has sent new codes\n");
+	printf("another device such as a weather station has send new codes\n");
 	printf("The debugger will automatically reset itself after one second of\n");
 	printf("failed leads. It will keep running until you explicitly stop it.\n");
 	printf("This is done by pressing both the [CTRL] and C buttons on your keyboard.\n");
 
-#ifdef PILIGHT_DEVELOPMENT
 	while(main_loop) {
 		sleep(1);
 	}
-#else
-	main_loop1(0);
-#endif
 
 clear:
-	options_delete(options);
-#ifdef PILIGHT_DEVELOPMENT
 	if(main_loop == 1) {
 		main_gc();
 	}
-#else
-	main_loop1(1);
-	main_gc();
-#endif
 	return (EXIT_FAILURE);
 }

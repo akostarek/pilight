@@ -54,8 +54,7 @@ typedef enum {
 	MOTION,
 	DUSK,
 	PING,
-	LABEL,
-	ALARM
+	LABEL
 } devtype_t;
 
 typedef struct protocol_devices_t {
@@ -98,10 +97,7 @@ typedef struct protocol_t {
 	struct protocol_devices_t *devices;
 	struct protocol_threads_t *threads;
 
-	union {
-		void (*parseCode)(void);
-		void (*parseCommand)(struct JsonNode *code);
-	};
+	void (*parseCode)(void);
 	int (*validate)(void);
 	int (*createCode)(JsonNode *code);
 	int (*checkValues)(JsonNode *code);

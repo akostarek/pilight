@@ -34,7 +34,6 @@
 
 #define LOG_STACK		255
 
-void logprintf1(int prio, char *file, int line, const char *format_str, ...);
 void logprintf(int prio, const char *format_str, ...);
 void logperror(int prio, const char *s);
 void *logloop(void *param);
@@ -46,8 +45,6 @@ int log_file_set(char *file);
 void log_level_set(int level);
 int log_level_get(void);
 int log_gc(void);
-void log_init(void);
-// void logerror(const char *, ...);
-void logerror(char *);
+void logerror(const char *format_str, ...);
 
 #endif

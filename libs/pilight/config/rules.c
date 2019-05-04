@@ -40,19 +40,12 @@
 
 static struct rules_t *rules = NULL;
 
-static pthread_mutex_t mutex_lock;
-static pthread_mutexattr_t mutex_attr;
-
-int config_rules_parse(struct JsonNode *root) {
+static int rules_parse(JsonNode *root) {
 	int have_error = 0, match = 0, x = 0;
 	unsigned int i = 0;
 	struct JsonNode *jrules = NULL;
 	char *rule = NULL;
 	double active = 1.0;
-
-	event_function_init();
-	event_operator_init();
-	event_action_init();
 
 	if(root->tag == JSON_OBJECT) {
 		jrules = json_first_child(root);
@@ -96,7 +89,6 @@ int config_rules_parse(struct JsonNode *root) {
 					}
 					node->next = NULL;
 					node->values = NULL;
-					node->jtrigger = NULL;
 					node->nrdevices = 0;
 					node->status = 0;
 					node->devices = NULL;
@@ -154,7 +146,7 @@ int config_rules_parse(struct JsonNode *root) {
 	return have_error;
 }
 
-struct JsonNode *config_rules_sync(int level, const char *media) {
+static JsonNode *rules_sync(int level, const char *media) {
 	struct JsonNode *root = json_mkobject();
 	struct JsonNode *rule = NULL;
 	struct rules_t *tmp = NULL;
@@ -182,7 +174,6 @@ struct JsonNode *config_rules_sync(int level, const char *media) {
 		if(strcmp(media, "all") == 0) {
 			match = tmp->nrdevices;
 		}
-
 		if(match == tmp->nrdevices) {
 			rule = json_mkobject();
 			json_append_member(rule, "rule", json_mkstring(tmp->rule));
@@ -191,7 +182,6 @@ struct JsonNode *config_rules_sync(int level, const char *media) {
 		}
 		tmp = tmp->next;
 	}
-
 	return root;
 }
 
@@ -205,12 +195,10 @@ int rules_gc(void) {
 	struct rules_actions_t *tmp_actions = NULL;
 	int i = 0;
 
-	pthread_mutex_lock(&mutex_lock);
 	while(rules) {
 		tmp_rules = rules;
 		FREE(tmp_rules->name);
 		FREE(tmp_rules->rule);
-		events_tree_gc(tmp_rules->tree);
 		for(i=0;i<tmp_rules->nrdevices;i++) {
 			FREE(tmp_rules->devices[i]);
 		}
@@ -229,6 +217,9 @@ int rules_gc(void) {
 			if(tmp_actions->arguments != NULL) {
 				json_delete(tmp_actions->arguments);
 			}
+			if(tmp_actions->parsedargs != NULL) {
+				json_delete(tmp_actions->parsedargs);
+			}
 			tmp_rules->actions = tmp_rules->actions->next;
 			if(tmp_actions != NULL) {
 				FREE(tmp_actions);
@@ -236,9 +227,6 @@ int rules_gc(void) {
 		}
 		if(tmp_rules->actions != NULL) {
 			FREE(tmp_rules->actions);
-		}
-		if(tmp_rules->jtrigger != NULL) {
-			json_delete(tmp_rules->jtrigger);
 		}
 		if(tmp_rules->devices != NULL) {
 			FREE(tmp_rules->devices);
@@ -250,14 +238,21 @@ int rules_gc(void) {
 		FREE(rules);
 	}
 	rules = NULL;
-	pthread_mutex_unlock(&mutex_lock);
 
 	logprintf(LOG_DEBUG, "garbage collected config rules library");
 	return 1;
 }
 
 void rules_init(void) {
-	pthread_mutexattr_init(&mutex_attr);
-	pthread_mutexattr_settype(&mutex_attr, PTHREAD_MUTEX_RECURSIVE);
-	pthread_mutex_init(&mutex_lock, &mutex_attr);
+	event_operator_init();
+	event_action_init();
+	event_function_init();
+
+	/* Request rules json object in main configuration */
+	config_register(&config_rules, "rules");
+	config_rules->readorder = 2;
+	config_rules->writeorder = 1;
+	config_rules->parse=&rules_parse;
+	config_rules->sync=&rules_sync;
+	config_rules->gc=&rules_gc;
 }

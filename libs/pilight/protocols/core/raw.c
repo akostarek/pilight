@@ -49,8 +49,6 @@ static int createCode(JsonNode *code) {
 	array_free(&array, n);
 
 	raw->rawlen=(int)i;
-	raw->txrpt = repeats;
-
 	return EXIT_SUCCESS;
 }
 
@@ -70,8 +68,8 @@ void rawInit(void) {
 	raw->hwtype = RF433;
 	raw->config = 0;
 
-	options_add(&raw->options, "c", "code", OPTION_HAS_VALUE, 0, JSON_STRING, NULL, NULL);
-	options_add(&raw->options, "r", "repeats", OPTION_OPT_VALUE, 0, JSON_NUMBER, NULL, NULL);
+	options_add(&raw->options, 'c', "code", OPTION_HAS_VALUE, 0, JSON_STRING, NULL, NULL);
+	options_add(&raw->options, 'r', "repeats", OPTION_OPT_VALUE, 0, JSON_NUMBER, NULL, NULL);
 
 	raw->createCode=&createCode;
 	raw->printHelp=&printHelp;
@@ -80,7 +78,7 @@ void rawInit(void) {
 #if defined(MODULE) && !defined(_WIN32)
 void compatibility(struct module_t *module) {
 	module->name = "raw";
-	module->version = "1.5";
+	module->version = "1.4";
 	module->reqversion = "6.0";
 	module->reqcommit = "84";
 }
