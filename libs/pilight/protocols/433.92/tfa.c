@@ -110,7 +110,7 @@ static void parseCode(void) {
 		temp2 = binToDecRev(binary, 18, 21);
 		temp3 = binToDecRev(binary, 22, 25);
 
-		// Convert from Â°F to Â°C,  a zero value is equivalent to -90.00 Â°F with an exp of 10, we enlarge that to 2 digit
+		// Convert from °F to °C,  a zero value is equivalent to -90.00 °F with an exp of 10, we enlarge that to 2 digit
 		temperature = (double)(((((temp1 + temp2*16 + temp3*256) * 10) - 9000 - 3200) * 5) / 9);
 
 		humi1 = binToDecRev(binary, 26, 29);
@@ -254,20 +254,20 @@ void tfaInit(void) {
 	tfa->minrawlen = MIN_RAW_LENGTH;
 	tfa->maxrawlen = MAX_RAW_LENGTH;
 
-	options_add(&tfa->options, "t", "temperature", OPTION_HAS_VALUE, DEVICES_VALUE, JSON_NUMBER, NULL, "^[0-9]{1,3}$");
-	options_add(&tfa->options, "i", "id", OPTION_HAS_VALUE, DEVICES_ID, JSON_NUMBER, NULL, "[0-9]");
-	options_add(&tfa->options, "c", "channel", OPTION_HAS_VALUE, DEVICES_ID, JSON_NUMBER, NULL, "[0-9]");
-	options_add(&tfa->options, "h", "humidity", OPTION_HAS_VALUE, DEVICES_VALUE, JSON_NUMBER, NULL, "[0-9]");
-	options_add(&tfa->options, "b", "battery", OPTION_HAS_VALUE, DEVICES_VALUE, JSON_NUMBER, NULL, "^[01]$");
+	options_add(&tfa->options, 't', "temperature", OPTION_HAS_VALUE, DEVICES_VALUE, JSON_NUMBER, NULL, "^[0-9]{1,3}$");
+	options_add(&tfa->options, 'i', "id", OPTION_HAS_VALUE, DEVICES_ID, JSON_NUMBER, NULL, "[0-9]");
+	options_add(&tfa->options, 'c', "channel", OPTION_HAS_VALUE, DEVICES_ID, JSON_NUMBER, NULL, "[0-9]");
+	options_add(&tfa->options, 'h', "humidity", OPTION_HAS_VALUE, DEVICES_VALUE, JSON_NUMBER, NULL, "[0-9]");
+	options_add(&tfa->options, 'b', "battery", OPTION_HAS_VALUE, DEVICES_VALUE, JSON_NUMBER, NULL, "^[01]$");
 
-	// options_add(&tfa->options, "0", "decimals", OPTION_HAS_VALUE, DEVICES_SETTING, JSON_NUMBER, (void *)2, "[0-9]");
-	options_add(&tfa->options, "0", "temperature-offset", OPTION_HAS_VALUE, DEVICES_SETTING, JSON_NUMBER, (void *)0, "[0-9]");
-	options_add(&tfa->options, "0", "humidity-offset", OPTION_HAS_VALUE, DEVICES_SETTING, JSON_NUMBER, (void *)0, "[0-9]");
-	options_add(&tfa->options, "0", "temperature-decimals", OPTION_HAS_VALUE, GUI_SETTING, JSON_NUMBER, (void *)2, "[0-9]");
-	options_add(&tfa->options, "0", "humidity-decimals", OPTION_HAS_VALUE, GUI_SETTING, JSON_NUMBER, (void *)2, "[0-9]");
-	options_add(&tfa->options, "0", "show-humidity", OPTION_HAS_VALUE, GUI_SETTING, JSON_NUMBER, (void *)1, "^[10]{1}$");
-	options_add(&tfa->options, "0", "show-temperature", OPTION_HAS_VALUE, GUI_SETTING, JSON_NUMBER, (void *)1, "^[10]{1}$");
-	options_add(&tfa->options, "0", "show-battery", OPTION_HAS_VALUE, GUI_SETTING, JSON_NUMBER, (void *)1, "^[10]{1}$");
+	// options_add(&tfa->options, 0, "decimals", OPTION_HAS_VALUE, DEVICES_SETTING, JSON_NUMBER, (void *)2, "[0-9]");
+	options_add(&tfa->options, 0, "temperature-offset", OPTION_HAS_VALUE, DEVICES_SETTING, JSON_NUMBER, (void *)0, "[0-9]");
+	options_add(&tfa->options, 0, "humidity-offset", OPTION_HAS_VALUE, DEVICES_SETTING, JSON_NUMBER, (void *)0, "[0-9]");
+	options_add(&tfa->options, 0, "temperature-decimals", OPTION_HAS_VALUE, GUI_SETTING, JSON_NUMBER, (void *)2, "[0-9]");
+	options_add(&tfa->options, 0, "humidity-decimals", OPTION_HAS_VALUE, GUI_SETTING, JSON_NUMBER, (void *)2, "[0-9]");
+	options_add(&tfa->options, 0, "show-humidity", OPTION_HAS_VALUE, GUI_SETTING, JSON_NUMBER, (void *)1, "^[10]{1}$");
+	options_add(&tfa->options, 0, "show-temperature", OPTION_HAS_VALUE, GUI_SETTING, JSON_NUMBER, (void *)1, "^[10]{1}$");
+	options_add(&tfa->options, 0, "show-battery", OPTION_HAS_VALUE, GUI_SETTING, JSON_NUMBER, (void *)1, "^[10]{1}$");
 
 	tfa->parseCode=&parseCode;
 	tfa->checkValues=&checkValues;
@@ -278,8 +278,8 @@ void tfaInit(void) {
 #if defined(MODULE) && !defined(_WIN32)
 void compatibility(struct module_t *module) {
 	module->name = "tfa";
-	module->version = "1.4";
-	module->reqversion = "7.0";
+	module->version = "1.0";
+	module->reqversion = "6.0";
 	module->reqcommit = "84";
 }
 
