@@ -24,7 +24,6 @@ typedef enum {
 	NONE = 0,
 	RF433,
 	RF868,
-	RFIR,
 	SENSOR,
 	HWRELAY,
 	API
@@ -34,13 +33,12 @@ typedef enum {
 	COMNONE = 0,
 	COMOOK,
 	COMPLSTRAIN,
-	COMAPI
 } communication_t;
 
 #include <pthread.h>
 #include "../core/options.h"
 #include "../core/json.h"
-#include "config.h"
+#include "../core/config.h"
 #include "defines.h"
 
 struct config_t *config_hardware;
@@ -62,22 +60,13 @@ typedef struct hardware_t {
 	communication_t comtype;
 	struct options_t *options;
 
-	int minrawlen;
-	int maxrawlen;
-	int mingaplen;
-	int maxgaplen;
-
 	unsigned short (*init)(void);
 	unsigned short (*deinit)(void);
 	union {
 		int (*receiveOOK)(void);
-		void *(*receiveAPI)(void *param);
 		int (*receivePulseTrain)(struct rawcode_t *r);
 	};
-	union {
-		int (*sendOOK)(int *code, int rawlen, int repeats);
-		int (*sendAPI)(struct JsonNode *code);
-	};
+	int (*send)(int *code, int rawlen, int repeats);
 	int (*gc)(void);
 	unsigned short (*settings)(JsonNode *json);
 	struct hardware_t *next;
@@ -92,10 +81,7 @@ extern struct hardware_t *hardware;
 extern struct conf_hardware_t *conf_hardware;
 
 void hardware_init(void);
-int hardware_gc(void);
 void hardware_register(struct hardware_t **hw);
 void hardware_set_id(struct hardware_t *hw, const char *id);
-int config_hardware_parse(struct JsonNode *root);
-struct JsonNode *config_hardware_sync(int level, const char *media);
 
 #endif

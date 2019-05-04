@@ -20,9 +20,8 @@
 #define _RULES_H_
 
 #include "../core/json.h"
+#include "../core/config.h"
 #include "../events/action.h"
-#include "../datatypes/stack.h"
-#include "config.h"
 
 typedef struct rules_values_t {
 	char *device;
@@ -32,7 +31,7 @@ typedef struct rules_values_t {
 } rules_values_t;
 
 typedef struct rules_actions_t {
-	void *ptr;
+	int nr;
 	struct rules_t *rule;
 	struct JsonNode *arguments;
 	struct JsonNode *parsedargs;
@@ -52,11 +51,9 @@ typedef struct rules_t {
 		struct timespec second;
 	}	timestamp;
 	unsigned short active;
-	struct JsonNode *jtrigger;
 	/* Arguments to be send to the action */
 	struct rules_actions_t *actions;
 	struct rules_values_t *values;
-	struct tree_t *tree;
 	struct rules_t *next;
 } rules_t;
 
@@ -64,8 +61,6 @@ struct config_t *config_rules;
 
 void rules_init(void);
 int rules_gc(void);
-int config_rules_parse(struct JsonNode *root);
-struct JsonNode *config_rules_sync(int level, const char *media);
 struct rules_t *rules_get(void);
 
 #endif
